@@ -194,7 +194,80 @@ local
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
    fun {Mix P2T Music}
-      % TODO
+      
+      fun {GetHeight Note}
+         fun {NtsNotes Nts}
+            case Nts of nil then nil
+            [] H|T then {NoteToExtended H}|{NtsNotes T}
+            end
+         end
+         NoteNames = [c c#4 d d#4 e f f#4 g g#4 a a#4 b]
+         Notes= {NtsNotes NoteNames}
+         fun {FindInd Nts N Acc}
+            EN
+         in
+            case Nts of nil then ~1
+            [] H|T then
+               EN = {Flat N}
+               if H.name == EN.name then 
+                  if (H.sharp == EN.sharp) then
+                     Acc
+                  else
+                     {FindInd T N Acc+1}
+                  end
+               else {FindInd T N Acc+1}
+               end
+            end
+         end
+         {FindInd Notes Note 0} - 5
+      end
+
+      fun {Frequence Note}
+         {Pow  2.0 {GetHeight Note}/12.0} * 440.0
+      end
+       
+      fun {NoteToSample Note I Acc}
+        if I == Note.duration*44100 then Acc/I
+        else
+          {NoteToSample Note I+1 (0.5*{Float.sin 2.0*3.1415926535*{Frequence Note}*I/44100.0})+Acc}
+        end
+      end
+
+      fun {ChordToSample Chord Acc}
+         case Chord
+         of nil then Acc
+         [] H|T then 
+            {ChordToSample T {NoteToSample H 0 0.0}|Acc}
+         end
+      end
+
+      fun {ExtendedToSample Ext}
+         case Ext 
+         of H|T then {ChordToSample Ext nil}
+         [] H then 
+            {NoteToSample Ext 0.0 0.0}
+         end
+      end
+
+      fun {Wave FileName}
+         {Project.load FileName}
+      end
+
+      %fun {Merge Mwi} body end
+
+      fun {ToSample Part}
+         case {Label Part}
+         of samples then Part
+         [] partition then {ExtendedToSample {P2T Part}}
+         [] wave then {Wave FileName}
+         %[] merge then {Merge Mwi}
+         %else {Filter Part}
+         end
+      end  
+      
+      in
+         
+      end
       {Project.readFile 'wave/animals/cow.wav'}
    end
 
