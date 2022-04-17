@@ -185,9 +185,9 @@ local
          end
       end
    in
-      if {Label Partition.1} == partition then
-         {P2T Partition.1.1}
-      else nil
+      case Partition of nil then nil
+      [] H|T then {P2T H.1}
+      else {P2T Partition.1}
       end
    end
 
@@ -204,13 +204,10 @@ local
          NoteNames = [c c#4 d d#4 e f f#4 g g#4 a a#4 b]
          Notes= {NtsNotes NoteNames}
          fun {FindInd Nts N Acc}
-            EN
-         in
             case Nts of nil then ~1
             [] H|T then
-               EN = {Flat N}
-               if H.name == EN.name then 
-                  if (H.sharp == EN.sharp) then
+               if H.name == N.name then 
+                  if (H.sharp == N.sharp) then
                      Acc
                   else
                      {FindInd T N Acc+1}
@@ -219,32 +216,33 @@ local
                end
             end
          end
-         {FindInd Notes Note 0} - 5
+      in
+         {FindInd Notes Note 0} - 9 + (Note.octave - 4)*{Length Notes}
       end
 
       fun {Frequence Note}
-         {Pow  2.0 {GetHeight Note}/12.0} * 440.0
+         {Pow 2.0 {IntToFloat {GetHeight Note}}/12.0} * 440.0
       end
        
       fun {NoteToSample Note I Acc}
-        if I == Note.duration*44100 then Acc/I
-        else
-          {NoteToSample Note I+1 (0.5*{Float.sin 2.0*3.1415926535*{Frequence Note}*I/44100.0})+Acc}
-        end
+         if I == Note.duration*44100.0 then Acc/I
+         else
+            {NoteToSample Note I+1.0 (0.5*{Float.sin 2.0*3.1415926535*{Frequence Note}*I/44100.0})+Acc}
+         end
       end
 
       fun {ChordToSample Chord Acc}
          case Chord
          of nil then Acc
          [] H|T then 
-            {ChordToSample T {NoteToSample H 0 0.0}|Acc}
+            {ChordToSample T {NoteToSample H 0.0 0.0}|Acc}
          end
       end
 
       fun {ExtendedToSample Ext}
-         case Ext 
-         of H|T then {ChordToSample Ext nil}
-         [] H then 
+         case Ext of nil then nil 
+         [] H|T then {ChordToSample H|T nil}
+         else
             {NoteToSample Ext 0.0 0.0}
          end
       end
@@ -254,20 +252,23 @@ local
       end
 
       %fun {Merge Mwi} body end
-
+      
       fun {ToSample Part}
          case {Label Part}
          of samples then Part
          [] partition then {ExtendedToSample {P2T Part}}
-         [] wave then {Wave FileName}
+         [] wave then {Wave Part}
          %[] merge then {Merge Mwi}
          %else {Filter Part}
          end
       end  
       
-      in
-         
-      end
+   in
+      /*
+      case Music of nil then nil
+      [] H|T then {ToSample H}
+      else {ToSample Music}
+      end*/
       {Project.readFile 'wave/animals/cow.wav'}
    end
 
@@ -293,8 +294,8 @@ in
    % You don't need to modify this.
    %{Browse Music}
    %{Browse (8+(~12 mod 8))}
-   {Browse {PartitionToTimedList Music}}
-   {Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
+   {Browse {Mix PartitionToTimedList Music}}
+   %{Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
    
    % Shows the total time to run your code.
    {Browse {IntToFloat {Time}-Start} / 1000.0}
