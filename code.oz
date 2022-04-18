@@ -291,30 +291,79 @@ local
       end
 
       fun {Wave FileName}
-         {Project.load FileName}
+         {Project.readFile FileName.1}
       end
 
-      %fun {Merge Mwi} body end
+      fun {Merge Musics}
+         fun {MSample Ms}
+            case Ms of nil then nil
+            [] H|T then 
+               case H
+               of I#M then I#{Mixer M}|{MSample T}
+               end
+            end
+         end
+         SampleMusics = {MSample Musics.1}
+         fun {MergeSamples Ms}
+            AllNil = {NewCell true}
+            SumM = {NewCell 0.0}
+            fun {NextSamples Mxs}
+               case Mxs of nil then nil
+               [] H|T then
+                  case H
+                  of I#W then I#W.1.2|{NextSamples T}
+                  end
+               end
+            end
+            Nxt = {NextSamples Ms}
+         in
+            for E in Ms do
+               case E of I#V then
+                  if V.1.1 == nil then
+                     skip
+                  else
+                     AllNil := false
+                  end
+               end
+            end
+
+            if @AllNil  then nil
+            else
+               for E in Ms do
+                  case E of I#V then
+                     if V.1.1 == nil then
+                        skip
+                     else
+                        SumM := @SumM + V.1.1*I
+                     end
+                  end
+               end
+               @SumM|{MergeSamples Nxt}
+            end
+         end
+      in
+         {MergeSamples SampleMusics}
+      end
       
       fun {ToSample Part}
          case {Label Part}
          of samples then Part
          [] partition then {Flatten {ExtendedToSample {P2T Part}}}
-         [] wave then {Wave Part}
-         %[] merge then {Merge Mwi}
+         [] wave then {Flatten {Wave Part}}
+         [] merge then {Merge Part}
          %else {Filter Part}
          end
       end
 
       fun {Mixer M}
          case M of nil then nil
-         [] H|T then {ToSample H}|{Mix P2T T}
+         [] H|T then {ToSample H}|{Mixer T}
          else {ToSample Music}
          end
       end
    in
-      {Flatten {Mixer Music}}
-      %{Project.readFile 'wave/animals/cow.wav'}
+      {Flatten {Mixer [merge([0.1#Music 0.9#[wave('wave/animals/cow.wav')]])]}}
+      %{Flatten {Mixer [wave('wave/animals/cow.wav')]}}
    end
 
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -339,8 +388,8 @@ in
    % You don't need to modify this.
    %{Browse Music}
    %{Browse {Flatten [1 [[2 3] 1] 4 5]}}
-   %{Browse {Mix PartitionToTimedList Music}}
-   {Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
+   {Browse {Mix PartitionToTimedList Music}}
+   %{Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
    
    % Shows the total time to run your code.
    {Browse {IntToFloat {Time}-Start} / 1000.0}
