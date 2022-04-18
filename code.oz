@@ -223,11 +223,22 @@ local
       fun {Frequence Note}
          {Pow 2.0 {IntToFloat {GetHeight Note}}/12.0} * 440.0
       end
-       
+      ChordList = {NewCell 0.0}
       fun {NoteToSample Note I Acc}
-         if I == Note.duration*44100.0 then Acc/I
+         if {IsList Note} then
+            if I == Note.1.duration*(44100.0) then Acc
+            else
+               ChordList := 0.0
+               for E in Note do
+                  ChordList := (0.5*{Float.sin 2.0*3.1415926535*{Frequence E}*I/44100.0}) + @ChordList
+               end
+               {NoteToSample Note I+1.0 @ChordList/{IntToFloat {Length Note}}|Acc}
+            end
          else
-            {NoteToSample Note I+1.0 (0.5*{Float.sin 2.0*3.1415926535*{Frequence Note}*I/44100.0})+Acc}
+            if I == Note.duration*44100.0 then Acc
+            else
+               {NoteToSample Note I+1.0 (0.5*{Float.sin 2.0*3.1415926535*{Frequence Note}*I/44100.0})|Acc}
+            end
          end
       end
 
@@ -235,7 +246,7 @@ local
          case Chord
          of nil then Acc
          [] H|T then 
-            {ChordToSample T {NoteToSample H 0.0 0.0}|Acc}
+            {ChordToSample T {NoteToSample H 0.0 Acc}}
          end
       end
 
@@ -243,7 +254,7 @@ local
          case Ext of nil then nil 
          [] H|T then {ChordToSample H|T nil}
          else
-            {NoteToSample Ext 0.0 0.0}
+            {NoteToSample Ext 0.0 nil}
          end
       end
 
@@ -264,12 +275,12 @@ local
       end  
       
    in
-      /*
+      
       case Music of nil then nil
       [] H|T then {ToSample H}
       else {ToSample Music}
-      end*/
-      {Project.readFile 'wave/animals/cow.wav'}
+      end
+      %{Project.readFile 'wave/animals/cow.wav'}
    end
 
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -294,8 +305,8 @@ in
    % You don't need to modify this.
    %{Browse Music}
    %{Browse (8+(~12 mod 8))}
-   {Browse {Mix PartitionToTimedList Music}}
-   %{Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
+   %{Browse {Mix PartitionToTimedList Music}}
+   {Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
    
    % Shows the total time to run your code.
    {Browse {IntToFloat {Time}-Start} / 1000.0}
