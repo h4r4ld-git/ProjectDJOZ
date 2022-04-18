@@ -55,26 +55,42 @@ local
 
       fun {Stretch NC Factor}
          X
+         CD
       in
          case NC
          of nil then nil
          [] H|T then
             X = {Flat H}
-            {ChangeDuration X Factor}|{Stretch T Factor}
+            case {Label X} of chord then
+               CD = chord({ChangeDuration X.1 Factor})
+            else
+               CD = {ChangeDuration X Factor}
+            end
+            CD|{Stretch T Factor}
          else
             X = {Flat NC}
-            {ChangeDuration X Factor}
+            case {Label X} of chord then
+               CD = chord({ChangeDuration X.1 Factor})
+            else
+               CD = {ChangeDuration X Factor}
+            end
+            CD
          end
       end
 
       fun {Sum L Acc}
          case L of nil then Acc
-         [] H|T then {Sum T Acc+H.duration}
+         [] H|T then 
+            case {Label H} of chord then 
+               {Sum T Acc+H.1.1.duration}
+            else
+               {Sum T Acc+H.duration}
+            end
          end
       end
 
-      fun {Dur PartIt}
-         {Stretch PartIt.1 (PartIt.seconds / {Sum {Flat PartIt.1} 0.0})}
+      fun {Dur PartIt Sec}
+         {Stretch PartIt Sec/{Sum PartIt 0.0}}
       end
 
       fun {Drone NC Amount}
@@ -160,16 +176,20 @@ local
          end
       end
 
+      Chorder = {NewCell 0}
+
       fun {ConvertExtended PartIt}
          if {IsList PartIt} then
-            {ChordToExtended PartIt}
+            Chorder := chord({ChordToExtended PartIt})
+            @Chorder
          else
             case {Label PartIt} 
             of note then PartIt
-            [] stretch then {Stretch PartIt.1 PartIt.factor}
-            [] duration then {Dur PartIt}
-            [] drone then {Drone PartIt.1 PartIt.amount}
-            [] transpose then {Transposer PartIt.1 PartIt.semitones}
+            [] chord then PartIt
+            [] stretch then {Stretch {P2T PartIt.1} PartIt.factor}
+            [] duration then {Dur {Flatten {NFilt PartIt}} PartIt.seconds} 
+            [] drone then {Drone {P2T PartIt.1} PartIt.amount}
+            [] transpose then {Transposer {P2T PartIt.1} PartIt.semitones}
             else {NoteToExtended PartIt}
             end
          end
@@ -179,16 +199,30 @@ local
          {ConvertExtended PartItem}
       end
 
+      fun {Filt NC}
+         case NC of nil then nil
+         [] H|T then 
+            case {Label H} of chord
+            then H.1|{Filt T}
+            else H|{Filt T}
+            end
+         else
+            NC
+         end
+      end
+
       fun {P2T Part}
          case Part of nil then nil
          [] H|T then {Flat H}|{P2T T}
+         else {Flat Part}
          end
       end
-   in
-      case Partition of nil then nil
-      [] H|T then {P2T H.1}
-      else {P2T Partition.1}
+
+      fun {NFilt Part}
+         {Flatten {P2T Part.1}}
       end
+   in
+      {Filt {Flatten {P2T Partition.1}}}
    end
 
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -224,37 +258,35 @@ local
          {Pow 2.0 {IntToFloat {GetHeight Note}}/12.0} * 440.0
       end
       ChordList = {NewCell 0.0}
-      fun {NoteToSample Note I Acc}
+      fun {NoteToSample Note I}
          if {IsList Note} then
-            if I == Note.1.duration*(44100.0) then Acc
+            if I >= Note.1.duration*(44100.0) - 1.0 then nil|0.0|nil
             else
                ChordList := 0.0
                for E in Note do
-                  ChordList := (0.5*{Float.sin 2.0*3.1415926535*{Frequence E}*I/44100.0}) + @ChordList
+                  if (E.name == silence) then
+                     skip
+                  else
+                     ChordList := (0.5*{Float.sin 2.0*3.1415926535*{Frequence E}*I/44100.0}) + @ChordList
+                  end
                end
-               {NoteToSample Note I+1.0 @ChordList/{IntToFloat {Length Note}}|Acc}
+               @ChordList/{IntToFloat {Length Note}}|{NoteToSample Note I+1.0}
             end
          else
-            if I == Note.duration*44100.0 then Acc
+            if Note.name == silence then 0.0
             else
-               {NoteToSample Note I+1.0 (0.5*{Float.sin 2.0*3.1415926535*{Frequence Note}*I/44100.0})|Acc}
+               if I >= Note.duration*44100.0 - 1.0 then nil|0.0|nil
+               else
+                  (0.5*{Float.sin 2.0*3.1415926535*{Frequence Note}*I/44100.0})|{NoteToSample Note I+1.0}
+               end
             end
          end
       end
-
-      fun {ChordToSample Chord Acc}
-         case Chord
-         of nil then Acc
-         [] H|T then 
-            {ChordToSample T {NoteToSample H 0.0 Acc}}
-         end
-      end
-
       fun {ExtendedToSample Ext}
-         case Ext of nil then nil 
-         [] H|T then {ChordToSample H|T nil}
+         case Ext of nil then nil
+         [] H|T then {NoteToSample H 0.0}|{ExtendedToSample T}
          else
-            {NoteToSample Ext 0.0 nil}
+            {NoteToSample Ext 0.0}
          end
       end
 
@@ -267,19 +299,21 @@ local
       fun {ToSample Part}
          case {Label Part}
          of samples then Part
-         [] partition then {ExtendedToSample {P2T Part}}
+         [] partition then {Flatten {ExtendedToSample {P2T Part}}}
          [] wave then {Wave Part}
          %[] merge then {Merge Mwi}
          %else {Filter Part}
          end
-      end  
-      
-   in
-      
-      case Music of nil then nil
-      [] H|T then {ToSample H}
-      else {ToSample Music}
       end
+
+      fun {Mixer M}
+         case M of nil then nil
+         [] H|T then {ToSample H}|{Mix P2T T}
+         else {ToSample Music}
+         end
+      end
+   in
+      {Flatten {Mixer Music}}
       %{Project.readFile 'wave/animals/cow.wav'}
    end
 
@@ -304,7 +338,7 @@ in
    % Calls your code, prints the result and outputs the result to `out.wav`.
    % You don't need to modify this.
    %{Browse Music}
-   %{Browse (8+(~12 mod 8))}
+   %{Browse {Flatten [1 [[2 3] 1] 4 5]}}
    %{Browse {Mix PartitionToTimedList Music}}
    {Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
    

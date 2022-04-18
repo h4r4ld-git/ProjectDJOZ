@@ -8,8 +8,8 @@ local
                 b a g a stretch(factor:2.0 [d stretch(factor:0.5 a)]) ]
 
    % This is not a music.
-   %Partition = {Flatten [End1]}
-   Partition = {Flatten [Tune End1 Tune End2 Interlude Tune End2]}
+   %Partition = {Flatten [Tune End2 Interlude Tune End2]}
+   Partition = [duration( {Flatten [Tune End1 Tune End2 Interlude Tune End2]} seconds:20.0)]
 in
    % This is a music :)
    [partition(Partition)]
