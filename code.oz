@@ -344,7 +344,43 @@ local
       in
          {MergeSamples SampleMusics}
       end
-      
+
+      fun {Reverse Music Acc}
+         case Music
+         of nil then Acc
+         [] H|T then
+            {Reverse T H|Acc}
+         end
+      end
+
+      fun {Repeat N Music Acc}
+         if N==~1 then
+            {Reverse Acc nil}
+         else
+            {Repeat N-1 Music {Reverse Music Acc}}
+         end
+      end
+
+      fun {Loop Duration Music}
+         body
+      end
+
+      fun {Clip Low High Music}
+         body
+      end
+
+      fun {Echo Delay Decay Music}
+         body
+      end
+
+      fun {Fade In Out Music}
+         body
+      end
+
+      fun {Cut Start End Music}
+         body
+      end
+
       fun {ToSample Part}
          case {Label Part}
          of samples then Part
