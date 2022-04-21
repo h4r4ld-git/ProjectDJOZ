@@ -27,30 +27,48 @@ local
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
    fun {PartitionToTimedList Partition}
-
-      fun {NtsNotes Nts}
-         case Nts of nil then nil
-         [] H|T then {NoteToExtended H}|{NtsNotes T}
+      fun {Reverser M Acc}
+         case M
+         of nil then Acc
+         [] H|T then
+            {Reverser T H|Acc}
+         else
+            M
          end
       end
+
+      fun {NtsNotes Nts}
+         fun {NtsNotesAcc Nts Acc}
+            case Nts of nil then Acc
+            [] H|T then {NtsNotesAcc T {NoteToExtended H}|Acc}
+            end
+         end
+      in
+         {Reverser {NtsNotesAcc Nts nil} nil}
+      end
+
       NoteNames = [c c#4 d d#4 e f f#4 g g#4 a a#4 b]
       Notes = {NtsNotes NoteNames}
 
       fun {ChangeDuration Note Factor}
-         case Note of nil then nil
-         [] H|T then
-            note(name: H.name
-                 octave: H.octave
-                 sharp: H.sharp
-                 duration: (H.duration * Factor)
-                 instrument: H.instrument)|{ChangeDuration T Factor}
-         else
-            note(name: Note.name
-            octave: Note.octave
-            sharp: Note.sharp
-            duration: (Note.duration * Factor)
-            instrument: Note.instrument)
+         fun {ChangeDurationAcc Note Factor Acc}
+            case Note of nil then Acc
+            [] H|T then
+               {ChangeDurationAcc T Factor note(name: H.name
+                                             octave: H.octave
+                                             sharp: H.sharp
+                                             duration: (H.duration * Factor)
+                                             instrument: H.instrument)|Acc}
+            else
+               note(name: Note.name
+               octave: Note.octave
+               sharp: Note.sharp
+               duration: (Note.duration * Factor)
+               instrument: Note.instrument)
+            end
          end
+      in
+         {Reverser {ChangeDurationAcc Note Factor nil} nil}
       end
 
       fun {Stretch NC Factor}
@@ -222,18 +240,32 @@ local
          {Flatten {P2T Part.1}}
       end
    in
-      {Filt {Flatten {P2T Partition.1}}}
+      case Partition
+      of partition(X) then {Filt {Flatten {P2T X}}}
+      else nil
+      end
    end
 
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
    fun {Mix P2T Music}
-      
+      fun {Reverser Music Acc}
+         case Music
+         of nil then Acc
+         [] H|T then
+            {Reverser T H|Acc}
+         end
+      end
+
       fun {GetHeight Note}
          fun {NtsNotes Nts}
-            case Nts of nil then nil
-            [] H|T then {NoteToExtended H}|{NtsNotes T}
+            fun {NtsNotesAcc Nts Acc}
+               case Nts of nil then Acc
+               [] H|T then {NtsNotesAcc T {NoteToExtended H}|Acc}
+               end
             end
+         in
+            {Reverser {NtsNotesAcc Nts nil} nil}
          end
          NoteNames = [c c#4 d d#4 e f f#4 g g#4 a a#4 b]
          Notes= {NtsNotes NoteNames}
@@ -257,148 +289,205 @@ local
       fun {Frequence Note}
          {Pow 2.0 {IntToFloat {GetHeight Note}}/12.0} * 440.0
       end
+
       ChordList = {NewCell 0.0}
+
       fun {NoteToSample Note I}
-         if {IsList Note} then
-            if I >= Note.1.duration*(44100.0) - 1.0 then nil|0.0|nil
+         fun {NoteToSampleAcc Note I Acc}
+            if {IsList Note} then
+               if I >= Note.1.duration*(44100.0) - 1.0 then Acc
+               else
+                  ChordList := 0.0
+                  for E in Note do
+                     if (E.name == silence) then
+                        skip
+                     else
+                        ChordList := (0.5*{Float.sin 2.0*3.1415926535*{Frequence E}*I/44100.0}) + @ChordList
+                     end
+                  end
+                  {NoteToSampleAcc Note I+1.0 @ChordList/{IntToFloat {Length Note}}|Acc}
+               end
             else
-               ChordList := 0.0
-               for E in Note do
-                  if (E.name == silence) then
-                     skip
+               if Note.name == silence then 0.0
+               else
+                  if I >= Note.duration*44100.0 - 1.0 then Acc
                   else
-                     ChordList := (0.5*{Float.sin 2.0*3.1415926535*{Frequence E}*I/44100.0}) + @ChordList
+                     {NoteToSampleAcc Note I+1.0 (0.5*{Float.sin 2.0*3.1415926535*{Frequence Note}*I/44100.0})|Acc}
                   end
                end
-               @ChordList/{IntToFloat {Length Note}}|{NoteToSample Note I+1.0}
-            end
-         else
-            if Note.name == silence then 0.0
-            else
-               if I >= Note.duration*44100.0 - 1.0 then nil|0.0|nil
-               else
-                  (0.5*{Float.sin 2.0*3.1415926535*{Frequence Note}*I/44100.0})|{NoteToSample Note I+1.0}
-               end
             end
          end
+      in
+         {Reverser {NoteToSampleAcc Note I nil} nil}
       end
+
       fun {ExtendedToSample Ext}
-         case Ext of nil then nil
-         [] H|T then {NoteToSample H 0.0}|{ExtendedToSample T}
-         else
-            {NoteToSample Ext 0.0}
+         fun {ExtendedToSampleAcc Ext Acc}
+            case Ext of nil then Acc
+            [] H|T then {ExtendedToSampleAcc T {NoteToSample H 0.0}|Acc}
+            else
+               {NoteToSample Ext 0.0}
+            end
          end
+      in
+         {Reverser {ExtendedToSampleAcc Ext nil} nil}
       end
 
       fun {Wave FileName}
-         {Project.readFile FileName.1}
+         {Project.readFile FileName}
       end
 
       fun {Merge Musics}
-         fun {MSample Ms}
-            case Ms of nil then nil
+         fun {MSample Ms Acc}
+            case Ms of nil then Acc
             [] H|T then 
                case H
-               of I#M then I#{Mixer M}|{MSample T}
+               of I#M then {MSample T I#{Mixer M}.1|Acc}
                end
             end
          end
-         SampleMusics = {MSample Musics.1}
-         fun {MergeSamples Ms}
+         SampleMusics = {Reverser {MSample Musics nil} nil}
+         fun {MergeSamples Ms Acc}
             AllNil = {NewCell true}
             SumM = {NewCell 0.0}
-            fun {NextSamples Mxs}
-               case Mxs of nil then nil
+            fun {NextSamples Mxs Acc}
+               case Mxs of nil then Acc
                [] H|T then
                   case H
-                  of I#W then I#W.1.2|{NextSamples T}
+                  of I#W then
+                     case W of nil then {NextSamples T I#W|Acc}
+                     else
+                        {NextSamples T I#W.2|Acc}
+                     end
                   end
                end
             end
-            Nxt = {NextSamples Ms}
+            Nxt = {Reverser {NextSamples Ms nil} nil}
          in
             for E in Ms do
                case E of I#V then
-                  if V.1.1 == nil then
-                     skip
+                  case V of nil then skip
                   else
                      AllNil := false
                   end
                end
             end
 
-            if @AllNil  then nil
+            if @AllNil then Acc
             else
                for E in Ms do
                   case E of I#V then
-                     if V.1.1 == nil then
-                        skip
+                     case V of nil then skip
                      else
-                        SumM := @SumM + V.1.1*I
+                        SumM := @SumM + V.1*I
                      end
                   end
                end
-               @SumM|{MergeSamples Nxt}
-            end
+               {MergeSamples Nxt @SumM|Acc}
+            end 
          end
       in
-         {MergeSamples SampleMusics}
+         {Reverser {MergeSamples SampleMusics nil} nil}
       end
 
-      fun {Reverse Music Acc}
-         case Music
-         of nil then Acc
-         [] H|T then
-            {Reverse T H|Acc}
-         end
+      fun {Reverse Music}
+         {Reverser {Mixer Music}.1 nil}
       end
 
-      fun {Repeat N Music Acc}
-         if N==~1 then
-            {Reverse Acc nil}
+      fun {RepeatAcc N Music Acc}
+         if N=<0 then
+            Acc
          else
-            {Repeat N-1 Music {Reverse Music Acc}}
+            {RepeatAcc N-1 Music Music|Acc}
          end
       end
 
+      fun {Repeat N Music}
+         {Flatten {RepeatAcc N {Mixer Music}.1 nil}}
+      end
+      
       fun {Loop Duration Music}
-         body
+         fun {GetPart X M Acc}
+            if X =< 0.0 then Acc
+            else
+               case M of nil then Acc
+               [] H|T then {GetPart X-1.0 T H|Acc}
+               end
+            end
+         end
+         M = {Mixer Music}.1
+         N = ({FloatToInt Duration*44100.0} div {Length M})
+         D = (Duration*44100.0 / {IntToFloat {Length M}}) - {IntToFloat N}
+      in
+         {Flatten {RepeatAcc N M nil}|{Reverser {GetPart {IntToFloat {Length M}}*D M nil} nil}}
       end
 
+      /*
       fun {Clip Low High Music}
-         body
+         skip
       end
 
       fun {Echo Delay Decay Music}
-         body
+         skip
       end
 
       fun {Fade In Out Music}
-         body
+         skip
       end
-
+      */
       fun {Cut Start End Music}
-         body
+         fun {StartCut Start Music}
+            if Start=<0.0 then Music
+            else
+               case Music of nil then 0.0
+               [] H|T then {StartCut Start-1.0 T}
+               else 0.0
+               end
+            end
+         end
+
+         fun {EndCut End Music Acc}
+            if End=<0.0 then Acc
+            else
+               case Music of nil then {EndCut End-1.0 Music 0.0|Acc}
+               [] H|T then {EndCut End-1.0 T H|Acc}
+               else {EndCut End-1.0 Music 0.0|Acc}
+               end
+            end
+         end
+         M = {Mixer Music}.1
+      in
+         {Reverser {Flatten {EndCut ((End-Start)*44100.0) {StartCut (Start*44100.0) M} nil}} nil}
       end
+      
 
       fun {ToSample Part}
-         case {Label Part}
-         of samples then Part
-         [] partition then {Flatten {ExtendedToSample {P2T Part}}}
-         [] wave then {Flatten {Wave Part}}
-         [] merge then {Merge Part}
-         %else {Filter Part}
+         case Part
+         of samples(X) then X
+         [] partition(X) then {Flatten {ExtendedToSample {P2T partition(X)}}}
+         [] wave(X) then {Flatten {Wave X}}
+         [] merge(X) then {Merge X}
+         [] reverse(X) then {Reverse X}
+         [] repeat(amount:Y X) then {Repeat Y X}
+         [] loop(seconds:Y X) then {Loop Y X}
+         [] cut(start:Y1 finish:Y2 X) then {Cut Y1 Y2 X}
+         else
+            Part
          end
       end
 
       fun {Mixer M}
-         case M of nil then nil
-         [] H|T then {ToSample H}|{Mixer T}
-         else {ToSample Music}
+         fun {Mixe M Acc}
+            case M of nil then Acc
+            [] H|T then {Mixe T {ToSample H}|Acc}
+            else {ToSample M}
+            end
          end
+      in
+         {Reverser {Mixe M nil} nil}
       end
    in
-      {Flatten {Mixer [merge([0.1#Music 0.9#[wave('wave/animals/cow.wav')]])]}}
+      {Flatten {Mixer [loop([merge([0.1#Music 0.9#[wave('wave/animals/cow.wav')]])] seconds:37.0)]}}
       %{Flatten {Mixer [wave('wave/animals/cow.wav')]}}
    end
 
@@ -424,8 +513,8 @@ in
    % You don't need to modify this.
    %{Browse Music}
    %{Browse {Flatten [1 [[2 3] 1] 4 5]}}
-   {Browse {Mix PartitionToTimedList Music}}
-   %{Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
+   %{Browse {Mix PartitionToTimedList Music}}
+   {Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
    
    % Shows the total time to run your code.
    {Browse {IntToFloat {Time}-Start} / 1000.0}
