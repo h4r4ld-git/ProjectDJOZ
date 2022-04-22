@@ -10,6 +10,10 @@ local
       case Note
       of Name#Octave then
          note(name:Name octave:Octave sharp:true duration:1.0 instrument:none)
+      [] silence then
+         silence(duration:1.0)
+      [] silence(duration:X) then
+         silence(duration:X)
       [] Atom then
          case {AtomToString Atom}
          of [_] then
@@ -54,17 +58,27 @@ local
          fun {ChangeDurationAcc Note Factor Acc}
             case Note of nil then Acc
             [] H|T then
-               {ChangeDurationAcc T Factor note(name: H.name
-                                             octave: H.octave
-                                             sharp: H.sharp
-                                             duration: (H.duration * Factor)
-                                             instrument: H.instrument)|Acc}
+               case {Label H}
+               of silence then
+                  {ChangeDurationAcc T Factor silence(duration: (H.duration * Factor))|Acc}   
+               [] note then
+                  {ChangeDurationAcc T Factor note(name: H.name
+                                                   octave: H.octave
+                                                   sharp: H.sharp
+                                                   duration: (H.duration * Factor)
+                                                   instrument: H.instrument)|Acc}
+               end
             else
-               note(name: Note.name
-               octave: Note.octave
-               sharp: Note.sharp
-               duration: (Note.duration * Factor)
-               instrument: Note.instrument)
+               case {Label Note}
+               of note then
+                  note(name: Note.name
+                  octave: Note.octave
+                  sharp: Note.sharp
+                  duration: (Note.duration * Factor)
+                  instrument: Note.instrument)
+               [] silence then
+                  silence(duration: (Note.duration * Factor))
+               end
             end
          end
       in
@@ -299,7 +313,7 @@ local
                else
                   ChordList := 0.0
                   for E in Note do
-                     if (E.name == silence) then
+                     if ({Label E} == silence) then
                         skip
                      else
                         ChordList := (0.5*{Float.sin 2.0*3.1415926535*{Frequence E}*I/44100.0}) + @ChordList
@@ -308,7 +322,11 @@ local
                   {NoteToSampleAcc Note I+1.0 @ChordList/{IntToFloat {Length Note}}|Acc}
                end
             else
-               if Note.name == silence then 0.0
+               if ({Label Note} == silence) then
+                  if I >= Note.duration*44100.0 - 1.0 then Acc
+                  else
+                     {NoteToSampleAcc Note I+1.0 0.0|Acc}
+                  end
                else
                   if I >= Note.duration*44100.0 - 1.0 then Acc
                   else
@@ -342,11 +360,12 @@ local
             case Ms of nil then Acc
             [] H|T then 
                case H
-               of I#M then {MSample T I#{Mixer M}.1|Acc}
+               of I#M then {MSample T I#{Mixer M}|Acc}
                end
             end
          end
          SampleMusics = {Reverser {MSample Musics nil} nil}
+
          fun {MergeSamples Ms Acc}
             AllNil = {NewCell true}
             SumM = {NewCell 0.0}
@@ -391,7 +410,7 @@ local
       end
 
       fun {Reverse Music}
-         {Reverser {Mixer Music}.1 nil}
+         {Reverser {Mixer Music} nil}
       end
 
       fun {RepeatAcc N Music Acc}
@@ -403,7 +422,7 @@ local
       end
 
       fun {Repeat N Music}
-         {Flatten {RepeatAcc N {Mixer Music}.1 nil}}
+         {Flatten {RepeatAcc N {Mixer Music} nil}}
       end
       
       fun {Loop Duration Music}
@@ -415,22 +434,35 @@ local
                end
             end
          end
-         M = {Mixer Music}.1
+         M = {Mixer Music}
          N = ({FloatToInt Duration*44100.0} div {Length M})
          D = (Duration*44100.0 / {IntToFloat {Length M}}) - {IntToFloat N}
       in
          {Flatten {RepeatAcc N M nil}|{Reverser {GetPart {IntToFloat {Length M}}*D M nil} nil}}
       end
 
-      /*
       fun {Clip Low High Music}
-         skip
+         fun {ClipAcc Low High Music Acc}
+            case Music of nil then Acc
+            [] H|T then
+               if H < Low then {ClipAcc Low High T Low|Acc}
+               else
+                  if H > High then {ClipAcc Low High T High|Acc}
+                  else
+                     {ClipAcc Low High T H|Acc}
+                  end
+               end
+            end
+         end
+      in
+         {Reverser {ClipAcc Low High {Mixer Music} nil} nil}
       end
-
+      
       fun {Echo Delay Decay Music}
-         skip
+         %{Merge [Decay#{Flatten [partition([duration([silence] seconds:Delay)])|Music]}]}
+         {Merge [Decay#{Flatten partition([duration([silence] seconds:Delay)])|Music} (1.0-Decay)#Music]}
       end
-
+      /*
       fun {Fade In Out Music}
          skip
       end
@@ -455,7 +487,7 @@ local
                end
             end
          end
-         M = {Mixer Music}.1
+         M = {Mixer Music}
       in
          {Reverser {Flatten {EndCut ((End-Start)*44100.0) {StartCut (Start*44100.0) M} nil}} nil}
       end
@@ -471,6 +503,8 @@ local
          [] repeat(amount:Y X) then {Repeat Y X}
          [] loop(seconds:Y X) then {Loop Y X}
          [] cut(start:Y1 finish:Y2 X) then {Cut Y1 Y2 X}
+         [] clip(low:Y1 high:Y2 X) then {Clip Y1 Y2 X}
+         [] echo(delay:Y1 decay:Y2 X) then {Echo Y1 Y2 X}
          else
             Part
          end
@@ -484,10 +518,10 @@ local
             end
          end
       in
-         {Reverser {Mixe M nil} nil}
+         {Reverser {Flatten {Mixe M nil}} nil}
       end
    in
-      {Flatten {Mixer [loop([merge([0.1#Music 0.9#[wave('wave/animals/cow.wav')]])] seconds:37.0)]}}
+      {Flatten {Mixer [echo([merge([0.1#Music 0.9#[wave('wave/animals/cow.wav')]])] delay:5.0 decay:0.2)]}}
       %{Flatten {Mixer [wave('wave/animals/cow.wav')]}}
    end
 
@@ -513,6 +547,7 @@ in
    % You don't need to modify this.
    %{Browse Music}
    %{Browse {Flatten [1 [[2 3] 1] 4 5]}}
+   %{Browse {PartitionToTimedList partition([duration([silence] seconds:2.0)])}}
    %{Browse {Mix PartitionToTimedList Music}}
    {Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
    
