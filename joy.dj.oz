@@ -9,7 +9,7 @@ local
 
    % This is not a music.
    %Partition = {Flatten [Tune End2 Interlude Tune End2]}
-   Partition = [duration( {Flatten [Tune End1 Tune End2 Interlude Tune End2]} seconds:20.0)]
+   Partition = [duration( {Flatten [transpose([a4 [a4 b5]] semitones:3) Tune End1 Tune End2 [Interlude Tune] End2]} seconds:20.0)]
 in
    % This is a music :)
    [partition(Partition)]
