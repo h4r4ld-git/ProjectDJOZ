@@ -364,8 +364,7 @@ local
                end
             end
          end
-         SampleMusics = {Reverser {MSample Musics nil} nil}
-
+         SampleMusics = {MSample Musics nil}
          fun {MergeSamples Ms Acc}
             AllNil = {NewCell true}
             SumM = {NewCell 0.0}
@@ -381,7 +380,7 @@ local
                   end
                end
             end
-            Nxt = {Reverser {NextSamples Ms nil} nil}
+            Nxt = {NextSamples Ms nil}
          in
             for E in Ms do
                case E of I#V then
@@ -462,11 +461,28 @@ local
          %{Merge [Decay#{Flatten [partition([duration([silence] seconds:Delay)])|Music]}]}
          {Merge [Decay#{Flatten partition([duration([silence] seconds:Delay)])|Music} (1.0-Decay)#Music]}
       end
-      /*
+      
       fun {Fade In Out Music}
-         skip
+         fun {FadeAcc In Out Music Count Acc}
+            case Music of nil then Acc
+            [] H|T then
+               if (Len - Count) < In then
+                  {FadeAcc In Out T Count-1.0 (H*((Len - Count)/In))|Acc}
+               else
+                  if Count < Out then
+                     {FadeAcc In Out T Count-1.0 (H*(Count/Out))|Acc}
+                  else
+                     {FadeAcc In Out T Count-1.0 H|Acc}
+                  end
+               end
+            end
+         end
+         M = {Mixer Music}
+         Len = {IntToFloat {Length M}}
+      in
+         {Reverser {FadeAcc In*44100.0 Out*44100.0 M Len nil} nil}
       end
-      */
+      
       fun {Cut Start End Music}
          fun {StartCut Start Music}
             if Start=<0.0 then Music
@@ -505,6 +521,7 @@ local
          [] cut(start:Y1 finish:Y2 X) then {Cut Y1 Y2 X}
          [] clip(low:Y1 high:Y2 X) then {Clip Y1 Y2 X}
          [] echo(delay:Y1 decay:Y2 X) then {Echo Y1 Y2 X}
+         [] fade(start:Y1 out:Y2 X) then {Fade Y1 Y2 X}
          else
             Part
          end
@@ -518,10 +535,10 @@ local
             end
          end
       in
-         {Reverser {Flatten {Mixe M nil}} nil}
+         {Flatten {Reverser {Mixe M nil} nil}}
       end
    in
-      {Flatten {Mixer [echo([merge([0.1#Music 0.9#[wave('wave/animals/cow.wav')]])] delay:5.0 decay:0.2)]}}
+      {Flatten {Mixer [fade([merge([1.0#Music]) wave('wave/animals/cow.wav')] start:5.0 out:5.0)]}}
       %{Flatten {Mixer [wave('wave/animals/cow.wav')]}}
    end
 
