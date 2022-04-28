@@ -461,8 +461,7 @@ local
       end
       % Ajouter un echo a la musique
       fun {Echo Delay Decay Music}
-         %{Merge [Decay#{Flatten [partition([duration([silence] seconds:Delay)])|Music]}]}
-            {Merge [Decay#{Flatten partition([duration([silence] seconds:Delay)])|Music} 1.0#Music]}
+         {Merge [Decay#{Flatten partition([duration([silence] seconds:Delay)])|Music} 1.0#Music]}
       end
       % Adoucir les transition de musique
       fun {Fade In Out Music}
@@ -546,29 +545,14 @@ local
 
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-   Extensions = false
+   %Extensions = false
 
    Music = {Project.load 'joy.dj.oz'}
-   Start
-
 in
-   Start = {Time}
-
-   % Uncomment next line to run your tests.
-   % {Test Mix PartitionToTimedList}
-
    % Add variables to this list to avoid "local variable used only once"
    % warnings.
    {ForAll [NoteToExtended Music] Wait}
    
-   % Calls your code, prints the result and outputs the result to `out.wav`.
-   % You don't need to modify this.
-   %{Browse Music}
-   %{Browse {Flatten [1 [[2 3] 1] 4 5]}}
-   %{Browse {PartitionToTimedList Music.1.1}}
-   %{Browse {Mix PartitionToTimedList Music}}
+   % Calls The code, prints the result and outputs the result to `out.wav`.
    {Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
-   
-   % Shows the total time to run your code.
-   {Browse {IntToFloat {Time}-Start} / 1000.0}
 end
