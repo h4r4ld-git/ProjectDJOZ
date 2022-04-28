@@ -126,7 +126,10 @@ local
          [] H|T then 
             % Dans le cas d'un accord récuperer la durée de la premiere note (car se joue en meme temps)
             case {Label H} of chord then 
-               {Sum T Acc+H.1.1.duration}
+               case H.1 of nil then {Sum T Acc}
+               else
+                  {Sum T Acc+H.1.1.duration}
+               end
             else
                {Sum T Acc+H.duration}
             end
@@ -140,16 +143,21 @@ local
       % Repeter la note ou l'accord
       fun {Drone PartIt Amount}
          Ret % Liste des notes ou accords
-         NC = {NFilt [[PartIt.1]]} % Transformer l'element de drone en partition
-      in
-         Ret = {NewCell nil}
-         % Le contenu de drone fois Ammount
-         for I in 0..Amount do
-            for E in NC do
-               Ret := {ConvertExtended E}|@Ret
+         NC = {NFilt [[PartIt.note]]} % Transformer l'element de drone en partition
+         fun {ConvertedList L Acc}
+            case L of nil then {Reverser Acc nil}
+            [] H|T then {ConvertedList T {ConvertExtended H}|Acc}
             end
          end
-         @Ret
+
+         fun {RepeatList L Amount Acc}
+            if Amount =< 0 then Acc
+            else
+               {RepeatList L (Amount-1) L|Acc}
+            end
+         end
+      in
+         {RepeatList {ConvertedList NC nil} Amount nil}
       end
       % Transposer la note ou les notes
       fun {Transpose NC Num}
@@ -181,7 +189,7 @@ local
             end
          end
          % Faire la transposé de la note
-         fun {NewNote NC Num Dure Instrument}
+         fun {NewNote NC Num}
             C % Nouvelle indice de la note transposée dans le tebleau Notes
             Sm % Nouvelle indice de la note transposée
             El % La note transposée
@@ -194,10 +202,10 @@ local
             end
             El = {GetInd Notes C}
             note(name: El.name
-            octave: (El.octave+(Sm div S))
+            octave: (NC.octave+(Sm div S))
             sharp: El.sharp
-            duration: Dure
-            instrument: Instrument)
+            duration: NC.duration
+            instrument: NC.instrument)
          end
       in
          case NC of nil then nil
@@ -206,7 +214,7 @@ local
             else
                if {Label H} == chord then chord({Transpose H.1 Num})|{Transpose T Num}
                else
-                  {NewNote H Num H.duration H.instrument}|{Transpose T Num}
+                  {NewNote H Num}|{Transpose T Num}
                end
             end
          else
@@ -215,7 +223,7 @@ local
             else
                if {Label NC} == chord then {Transpose NC Num}
                else
-                  {NewNote NC Num NC.duration NC.instrument}
+                  {NewNote NC Num}
                end
             end
          end
@@ -227,12 +235,10 @@ local
          end
       end
 
-      Chorder = {NewCell 0} % Accord
       % Decoder un element d'une partition
       fun {ConvertExtended PartIt}
          if {IsList PartIt} then % En cas de liste transformer en chord(List) pour garder l'accord avec les operations de Flatten
-            Chorder := chord({ChordToExtended PartIt})
-            @Chorder
+            chord({ChordToExtended PartIt})
          else
             case {Label PartIt} 
             of note then PartIt
@@ -268,23 +274,8 @@ local
          else {ConvertExtended Part}
          end
       end
-      % Decoder une partition
-      fun {PartitionToTimedListAcc Partition Acc}
-         case Partition of nil then {Filt {Flatten {Reverser Acc nil}}}
-         [] H|T then
-            case H
-            of partition(X) then {PartitionToTimedListAcc T {P2T X}|Acc}
-            else nil
-            end
-         else
-            case Partition
-            of partition(X) then {Filt {Flatten {P2T X}}}
-            else nil
-            end
-         end
-      end
    in
-      {PartitionToTimedListAcc Partition nil}
+      {Filt {Flatten {P2T Partition}}}
    end
 
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -313,23 +304,24 @@ local
          {Pow 2.0 {IntToFloat {GetHeight Note}}/12.0} * 440.0
       end
 
-      ChordList = {NewCell 0.0}
       % Transformer une note en frequence
       fun {NoteToSample Note I}
+         fun {SumL L Acc}
+            case L of nil then Acc
+            [] H|T then
+               if ({Label H} == silence) then
+                  {SumL T Acc}
+               else
+                  {SumL T ((0.5*{Float.sin 2.0*3.1415926535*{Frequence H}*I/44100.0}) + Acc)}
+               end
+            end
+         end
          fun {NoteToSampleAcc Note I Acc}
             if {IsList Note} then % cas d'une liste de notes
                if I >= Note.1.duration*(44100.0) - 1.0 then Acc % Terminer lorsque la durée est atteinte
                else
-                  ChordList := 0.0
                   % Faire la somme des frequences de la liste des notes
-                  for E in Note do
-                     if ({Label E} == silence) then
-                        skip
-                     else
-                        ChordList := (0.5*{Float.sin 2.0*3.1415926535*{Frequence E}*I/44100.0}) + @ChordList
-                     end
-                  end
-                  {NoteToSampleAcc Note I+1.0 @ChordList/{IntToFloat {Length Note}}|Acc}
+                  {NoteToSampleAcc Note I+1.0 {SumL Note 0.0}/{IntToFloat {Length Note}}|Acc}
                end
             else
                if ({Label Note} == silence) then
@@ -378,8 +370,17 @@ local
          SampleMusics = {MSample Musics nil}
          % Fusionner les listes de frequences
          fun {MergeSamples Ms Acc}
-            AllNil = {NewCell true} % Toutes les musiques sont nil
-            SumM = {NewCell 0.0} % Somme des frequences des elements initiales
+            fun {FreqSum L Acc}
+               case L of nil then Acc
+               [] H|T then
+                  case H of I#V then
+                     case V of nil then {FreqSum T Acc}
+                     else
+                        {FreqSum T (Acc + V.1*I)}
+                     end
+                  end
+               end
+            end
             % Passer aux prochains elements des musiques
             fun {NextSamples Mxs Acc}
                case Mxs of nil then Acc
@@ -394,29 +395,14 @@ local
                end
             end
             Nxt = {NextSamples Ms nil} % Prochains elements des frequences des musiques
+            Freqs
          in
             % Verifier si toutes les musiques sont saturées
-            for E in Ms do
-               case E of I#V then
-                  case V of nil then skip
-                  else
-                     AllNil := false
-                  end
-               end
-            end
-
-            if @AllNil then Acc
+            Freqs = {FreqSum Ms 0.0}
+            if Freqs == 0.0 then Acc
             else
                % Somme des frequences
-               for E in Ms do
-                  case E of I#V then
-                     case V of nil then skip
-                     else
-                        SumM := @SumM + V.1*I
-                     end
-                  end
-               end
-               {MergeSamples Nxt @SumM|Acc}
+               {MergeSamples Nxt Freqs|Acc}
             end 
          end
       in
@@ -443,7 +429,7 @@ local
       % Repeter une musique pendant une durée
       fun {Loop Duration Music}
          fun {GetPart X M Acc}
-            if X =< 0.0 then Acc
+            if X =< 1.0 then Acc
             else
                case M of nil then Acc
                [] H|T then {GetPart X-1.0 T H|Acc}
@@ -476,7 +462,7 @@ local
       % Ajouter un echo a la musique
       fun {Echo Delay Decay Music}
          %{Merge [Decay#{Flatten [partition([duration([silence] seconds:Delay)])|Music]}]}
-         {Merge [Decay#{Flatten partition([duration([silence] seconds:Delay)])|Music} (1.0-Decay)#Music]}
+            {Merge [Decay#{Flatten partition([duration([silence] seconds:Delay)])|Music} 1.0#Music]}
       end
       % Adoucir les transition de musique
       fun {Fade In Out Music}
@@ -484,10 +470,10 @@ local
             case Music of nil then Acc
             [] H|T then
                if (Len - Count) < In then
-                  {FadeAcc In Out T Count-1.0 (H*((Len - Count)/In))|Acc}
+                  {FadeAcc In Out T Count-1.0 (H*((Len - (Count))/In))|Acc}
                else
                   if Count < Out then
-                     {FadeAcc In Out T Count-1.0 (H*(Count/Out))|Acc}
+                     {FadeAcc In Out T Count-1.0 (H*((Count-1.0)/Out))|Acc}
                   else
                      {FadeAcc In Out T Count-1.0 H|Acc}
                   end
@@ -502,7 +488,7 @@ local
       % Couper une musique
       fun {Cut Start End Music}
          fun {StartCut Start Music}
-            if Start=<0.0 then Music
+            if Start=<1.0 then Music
             else
                case Music of nil then 0.0
                [] H|T then {StartCut Start-1.0 T}
@@ -512,7 +498,7 @@ local
          end
 
          fun {EndCut End Music Acc}
-            if End=<0.0 then Acc
+            if End=<1.0 then Acc
             else
                case Music of nil then {EndCut End-1.0 Music 0.0|Acc}
                [] H|T then {EndCut End-1.0 T H|Acc}
@@ -529,7 +515,7 @@ local
       fun {ToSample Part}
          case Part
          of samples(X) then X
-         [] partition(X) then {Flatten {ExtendedToSample {P2T partition(X)}}}
+         [] partition(X) then {Flatten {ExtendedToSample {P2T X}}}
          [] wave(X) then {Flatten {Wave X}}
          [] merge(X) then {Merge X}
          [] reverse(X) then {Reverse X}
@@ -565,9 +551,6 @@ local
    Music = {Project.load 'joy.dj.oz'}
    Start
 
-   % Uncomment next line to insert your tests.
-   % \insert '/full/absolute/path/to/your/tests.oz'
-   % !!! Remove this before submitting.
 in
    Start = {Time}
 
@@ -582,7 +565,7 @@ in
    % You don't need to modify this.
    %{Browse Music}
    %{Browse {Flatten [1 [[2 3] 1] 4 5]}}
-   %{Browse {PartitionToTimedList Music}}
+   %{Browse {PartitionToTimedList Music.1.1}}
    %{Browse {Mix PartitionToTimedList Music}}
    {Browse {Project.run Mix PartitionToTimedList Music 'out.wav'}}
    
