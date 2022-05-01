@@ -12,6 +12,5 @@ local
    Partition = [[b b c5] drone(a4 amount:5) duration( {Flatten [drone([a4 b5] amount:3) Tune End1 Tune End2 [Interlude Tune] End2]} seconds:20.0)]
 in
    % This is a music :)
-   %[partition(Partition)]
-   [partition([transpose([a4 c5] semitones:4)])]
+   [partition(Partition)]
 end

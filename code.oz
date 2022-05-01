@@ -545,9 +545,18 @@ local
 
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-   %Extensions = false
+   fun {Lissage Music Acc}
+      case Music
+      of nil then Acc
+      [] H|T then
+         {Lissage T fade(start:0.5 out:1.5 H|nil)|nil}
+      end
+   end
 
-   Music = {Project.load 'joy.dj.oz'}
+   %
+   %Extensions = true
+
+   Music = {Lissage {Project.load 'joy.dj.oz'} nil}
 in
    % Add variables to this list to avoid "local variable used only once"
    % warnings.
